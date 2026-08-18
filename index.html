@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>反應時間測試</title>
+<style>
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+    body, html { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+    /* 名字輸入彈窗 */
+
+    #login-overlay {
+
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+
+      background: rgba(0, 0, 0, 0.85); display: flex;
+
+      justify-content: center; align-items: center; z-index: 100;
+
+    }
+
+    .login-box {
+
+      background: #fff; padding: 30px; border-radius: 16px;
+
+      text-align: center; width: 85%; max-width: 360px;
+
+    }
+
+    .login-box h2 { margin-bottom: 15px; color: #333; }
+
+    .login-box input {
+
+      width: 100%; padding: 12px; font-size: 16px;
+
+      margin-bottom: 15px; border: 2px solid #ccc; border-radius: 8px; text-align: center;
+
+    }
+
+    .login-box button {
+
+      width: 100%; padding: 12px; font-size: 16px; font-weight: bold;
+
+      background: #007AFF; color: white; border: none; border-radius: 8px; cursor: pointer;
+
+    }
+
+    /* 遊戲主畫面 */
+
+    #game-area {
+
+      width: 100%; height: 100%; display: flex; flex-direction: column;
+
+      justify-content: center; align-items: center; text-align: center;
+
+      color: white; padding: 20px; transition: background-color 0.1s ease;
+
+    }
+
+    .state-red { background-color: #FF3B30; }
+
+    .state-green { background-color: #34C759; }
+
+    .state-wait { background-color: #FF9500; }
+
+    h1 { font-size: 32px; margin-bottom: 10px; }
+
+    p { font-size: 18px; opacity: 0.9; }
+
+    .status-info { margin-top: 15px; font-size: 14px; opacity: 0.8; }
+</style>
+</head>
+<body>
+<!-- 登入視窗 -->
+<div id="login-overlay">
+<div class="login-box">
+<h2>玩家登入</h2>
+<input type="text" id="player-name" placeholder="請輸入姓名" />
+<button onclick="startGameSession()">進入遊戲</button>
+</div>
+</div>
+<!-- 遊戲區域 -->
+<div id="game-area" class="state-red" onclick="handleTap()">
+<h1 id="main-text">點擊畫面開始</h1>
+<p id="sub-text">準備好後輕觸螢幕</p>
+<div class="status-info" id="user-status"></div>
+</div>
+<script>
+
+    // 替換為你的 Google Apps Script Web App URL
+
+    const API_URL = "https://script.google.com/macros/s/AKfycbyBMUzk8D47EOoZqr-zCQ2X--2JPbks1cYcRmU2KfdTiE98uji-9SBTExNEVlTEcaCAzw/exec";
+
+    let playerName = "";
+
+    let state = "IDLE"; // IDLE, WAITING, READY, FINISHED, LIMIT
+
+    let timer = null;
+
+    let startTime = 0;
+
+    function startGameSession() {
+
+      const nameInput = document.getElementById("player-name").value.trim();
+
+      if (!nameInput) {
+
+        alert("請輸入姓名！");
+
+        return;
+
+      }
+
+      playerName = nameInput;
+
+      document.getElementById("login-overlay").style.display = "none";
+
+      document.getElementById("user-status").innerText = `玩家：${playerName}`;
+
+    }
+
+    function handleTap() {
+
+      const gameArea = document.getElementById("game-area");
+
+      const mainText = document.getElementById("main-text");
+
+      const subText = document.getElementById("sub-text");
+
+      if (state === "LIMIT") {
+
+        alert("你已達到 3 次上限，無法再進行測試！");
+
+        return;
+
+      }
+
+      // 1. 點擊開始 -> 進入等待變綠畫面
+
+      if (state === "IDLE" || state === "FINISHED") {
+
+        state = "WAITING";
+
+        gameArea.className = "state-wait";
+
+        mainText.innerText = "等待畫面變綠色...";
+
+        subText.innerText = "看到綠色請立刻點擊！";
+
+        // 隨機 2 至 5 秒後變綠
+
+        const randomDelay = Math.floor(Math.random() * 3000) + 2000;
+
+        timer = setTimeout(() => {
+
+          state = "READY";
+
+          startTime = Date.now();
+
+          gameArea.className = "state-green";
+
+          mainText.innerText = "按停！";
+
+          subText.innerText = "快按！";
+
+        }, randomDelay);
+
+      // 2. 太早按（仍在橙色/等待狀態）
+
+      } else if (state === "WAITING") {
+
+        clearTimeout(timer);
+
+        state = "IDLE";
+
+        gameArea.className = "state-red";
+
+        mainText.innerText = "太早按了！";
+
+        subText.innerText = "點擊畫面重新開始";
+
+      // 3. 綠色出現後按停 -> 計算反應時間並傳送資料
+
+      } else if (state === "READY") {
+
+        const reactionTime = Date.now() - startTime;
+
+        state = "FINISHED";
+
+        gameArea.className = "state-red";
+
+        mainText.innerText = `${reactionTime} ms`;
+
+        subText.innerText = "記錄上傳中... 點擊畫面可再試一次";
+
+        uploadResult(reactionTime);
+
+      }
+
+    }
+
+    function uploadResult(timeMs) {
+
+      fetch(API_URL, {
+
+        method: "POST",
+
+        mode: "no-cors", // 避免跨域問題
+
+        headers: { "Content-Type": "application/json" },
+
+        body: JSON.stringify({ name: playerName, reactionTime: timeMs })
+
+      })
+
+      .then(() => {
+
+        document.getElementById("sub-text").innerText = "記錄已上傳！點擊畫面繼續";
+
+      })
+
+      .catch(err => {
+
+        console.error(err);
+
+        document.getElementById("sub-text").innerText = "上傳失敗，請檢查網路";
+
+      });
+
+    }
+</script>
+</body>
+</html>
+ 
